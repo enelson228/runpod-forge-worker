@@ -41,8 +41,21 @@ sync_models() {
     local url
     local first_filename=""
 
+    # Support a simpler single MODEL_URL variable to avoid UI issues with '='
+    if [[ -n "${MODEL_URL:-}" && -z "${MODEL_DOWNLOADS}" ]]; then
+        echo "Using MODEL_URL for single model download."
+        url="${MODEL_URL}"
+        filename=$(basename "${url%%\?*}")
+        if [[ "${filename}" != *.safetensors && "${filename}" != *.ckpt ]]; then
+            filename="model.safetensors"
+        fi
+        download_model "${filename}" "${url}"
+        export FORGE_MODEL_CHECKPOINT="${filename}"
+        return
+    fi
+
     if [[ -z "${MODEL_DOWNLOADS}" ]]; then
-        echo "FORGE_MODEL_DOWNLOADS is unset; assuming models are already available."
+        echo "Neither FORGE_MODEL_DOWNLOADS nor MODEL_URL is set; assuming models are already available."
         return
     fi
 
