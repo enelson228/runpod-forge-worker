@@ -41,6 +41,8 @@ You can also let GitHub Actions publish the image automatically:
 5. **GPU Support:** A100, A6000, or L40 recommended.
 6. **Active Workers:** 0 (Autoscale).
 7. Set `FORGE_MODEL_DOWNLOADS` to the checkpoint(s) you want the worker to fetch on cold start.
+   *Example for Juggernaut XL v9:*
+   `Juggernaut-XL-v9.safetensors=https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors`
 
 ### 4. Update Infinity Site
 Update your `SD_ENDPOINT_ID` in your environment variables with the new ID provided by RunPod.
