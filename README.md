@@ -15,7 +15,7 @@ This image is intentionally slimmed down for RunPod Serverless cold starts:
 From this directory, run:
 ```bash
 export IMAGE_NAME=ghcr.io/enelson228/runpod-forge-worker:latest
-docker build -t "$IMAGE_NAME" .
+docker build --platform linux/amd64 -t "$IMAGE_NAME" .
 ```
 *Note: This still takes time because of Forge and PyTorch dependencies, but it no longer bakes multi-GB checkpoints into the image.*
 
@@ -24,6 +24,8 @@ docker build -t "$IMAGE_NAME" .
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u enelson228 --password-stdin
 docker push "$IMAGE_NAME"
 ```
+
+If you are building from an Apple Silicon Mac, `--platform linux/amd64` is required. RunPod Serverless will not start an `arm64` image.
 
 Make sure the GHCR package is visible to RunPod:
 - easiest path: publish the package as **public**
