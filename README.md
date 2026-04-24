@@ -6,7 +6,8 @@ This directory contains the configuration for a RunPod Serverless worker running
 This image is intentionally slimmed down for RunPod Serverless cold starts:
 - Forge code and Python dependencies are baked into the image.
 - Model weights are **not** baked into the image.
-- Checkpoints can be pulled into `/opt/models/Stable-diffusion` at startup with `FORGE_MODEL_DOWNLOADS`.
+- Preferred production path: use RunPod cached models and point the worker at the cached snapshot.
+- Fallback path: pull checkpoints into `/opt/models/Stable-diffusion` at startup with `FORGE_MODEL_DOWNLOADS`.
 
 ## Deployment Instructions
 
@@ -40,8 +41,11 @@ You can also let GitHub Actions publish the image automatically:
 4. **Container Disk:** 20GB is usually enough for the slim image itself. Increase it only if you copy models into the worker filesystem at startup.
 5. **GPU Support:** A100, A6000, or L40 recommended.
 6. **Active Workers:** 0 (Autoscale).
-7. Set `FORGE_MODEL_DOWNLOADS` to the checkpoint(s) you want the worker to fetch on cold start.
-   *Example for Juggernaut XL v9:*
+7. Prefer configuring a cached Hugging Face model on the endpoint, then set:
+   `FORGE_HF_MODEL_REPO=RunDiffusion/Juggernaut-XL-v9`
+   `FORGE_HF_MODEL_FILE=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors`
+8. If you cannot use cached models yet, set `FORGE_MODEL_DOWNLOADS` to the checkpoint(s) you want the worker to fetch on cold start.
+   *Example fallback for Juggernaut XL v9:*
    `Juggernaut-XL-v9.safetensors=https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors`
 
 ### 4. Update Infinity Site
@@ -52,6 +56,9 @@ Update your `SD_ENDPOINT_ID` in your environment variables with the new ID provi
 - **Handler:** `handler.py` (Maps RunPod input to Forge `/sdapi/v1/txt2img`)
 - **Args:** `--nowebui --api --xformers --skip-torch-cuda-test`
 - **Model Directory:** `/opt/models/Stable-diffusion`
+- **Cached HF Model Root:** `/runpod-volume/huggingface-cache/hub`
+- **Cached HF Repo Env:** `FORGE_HF_MODEL_REPO`
+- **Cached HF File Env:** `FORGE_HF_MODEL_FILE`
 - **Model Download Manifest:** `FORGE_MODEL_DOWNLOADS`
 
 ## Behavior Notes
@@ -61,14 +68,26 @@ Update your `SD_ENDPOINT_ID` in your environment variables with the new ID provi
 - Default checkpoint selection is controlled by `FORGE_MODEL_CHECKPOINT`.
 - If `FORGE_MODEL_CHECKPOINT` is unset, the worker will not force a checkpoint override and Forge will use its current default.
 - The image no longer includes `sd_xl_base_1.0.safetensors` or `realvisxl_v50.safetensors`; provide them separately if you still want them.
+- The startup script now prefers a cached Hugging Face model snapshot when `FORGE_HF_MODEL_REPO` is set.
 - If `FORGE_MODEL_DOWNLOADS` is set, the startup script downloads each missing checkpoint before Forge launches.
 - `FORGE_MODEL_DOWNLOADS` format is comma-separated `filename=url` pairs.
 - If `FORGE_MODEL_CHECKPOINT` is unset, the first downloaded filename becomes the default checkpoint automatically.
+- Default Forge startup logging is quieter now; request logging is no longer enabled by default and console progress bars are disabled.
 
 ## Suggested Serverless Model Delivery
-For `0` active workers, the practical pattern is:
-- Host your checkpoint files at stable direct-download URLs, such as Hugging Face, Cloudflare R2, S3, or another object store.
-- Set `FORGE_MODEL_DOWNLOADS` on the RunPod endpoint, for example:
+For `0` active workers, the practical production pattern is:
+- Use RunPod cached models for the main checkpoint.
+- Set `FORGE_HF_MODEL_REPO` to the Hugging Face repo ID and `FORGE_HF_MODEL_FILE` to the checkpoint filename inside that repo.
+- Keep `FORGE_MODEL_DOWNLOADS` only as a fallback for models that cannot be cached.
+
+Example cached-model setup:
+
+```bash
+FORGE_HF_MODEL_REPO=RunDiffusion/Juggernaut-XL-v9
+FORGE_HF_MODEL_FILE=Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors
+```
+
+Fallback runtime-download setup:
 
 ```bash
 FORGE_MODEL_DOWNLOADS=realvisxl_v50.safetensors=https://your-bucket.example/realvisxl_v50.safetensors
