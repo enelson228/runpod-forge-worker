@@ -52,10 +52,11 @@ COPY handler.py /opt/stable-diffusion-webui-forge/handler.py
 COPY start.sh /opt/stable-diffusion-webui-forge/start.sh
 RUN chmod +x /opt/stable-diffusion-webui-forge/start.sh
 
-ENV WEBUI_ARGS="--nowebui --api --skip-torch-cuda-test --skip-python-version-check --skip-install --xformers --listen --port 7860"
+ENV WEBUI_ARGS="--nowebui --api --skip-torch-cuda-test --skip-python-version-check --skip-install --xformers --listen --port 7860 --disable-console-progressbars"
 ENV HF_HOME="/tmp/huggingface"
 ENV TRANSFORMERS_CACHE="/tmp/huggingface/transformers"
 ENV FORGE_MODEL_DIR="/opt/models/Stable-diffusion"
 ENV FORGE_MODEL_CHECKPOINT=""
+ENV FORGE_HF_CACHE_ROOT="/runpod-volume/huggingface-cache/hub"
 
 CMD ["/opt/stable-diffusion-webui-forge/start.sh"]

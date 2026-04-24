@@ -3,6 +3,7 @@ set -euo pipefail
 
 MODEL_DIR="${FORGE_MODEL_DIR:-/opt/models/Stable-diffusion}"
 MODEL_DOWNLOADS="${FORGE_MODEL_DOWNLOADS:-}"
+HF_CACHE_ROOT="${FORGE_HF_CACHE_ROOT:-/runpod-volume/huggingface-cache/hub}"
 
 echo "Starting Forge WebUI in API mode..."
 echo "WEBUI_ARGS=${WEBUI_ARGS:-unset}"
@@ -10,12 +11,76 @@ echo "FORGE_STARTUP_TIMEOUT=${FORGE_STARTUP_TIMEOUT:-900}"
 echo "FORGE_REQUEST_TIMEOUT=${FORGE_REQUEST_TIMEOUT:-600}"
 echo "TRANSFORMERS_CACHE=${TRANSFORMERS_CACHE:-unset}"
 echo "FORGE_MODEL_DIR=${MODEL_DIR}"
+echo "FORGE_HF_MODEL_REPO=${FORGE_HF_MODEL_REPO:-unset}"
+echo "FORGE_HF_MODEL_FILE=${FORGE_HF_MODEL_FILE:-unset}"
 
 # Force Forge to skip all environment preparation and installation
 # This prevents the long 'pip install' wait you saw in the logs
 export SKIP_VENV=1
 export PIP_SKIP_INTERNET_CHECK=1
 mkdir -p "${HF_HOME:-/tmp/huggingface}" "${TRANSFORMERS_CACHE:-/tmp/huggingface/transformers}" "${MODEL_DIR}"
+
+find_cached_snapshot_dir() {
+    local repo_id="$1"
+    local cache_name
+    local repo_root
+    local ref_file
+    local snapshot
+
+    cache_name="${repo_id//\//--}"
+    repo_root="${HF_CACHE_ROOT}/models--${cache_name}"
+    ref_file="${repo_root}/refs/main"
+
+    if [[ -f "${ref_file}" ]]; then
+        snapshot="$(<"${ref_file}")"
+        if [[ -n "${snapshot}" && -d "${repo_root}/snapshots/${snapshot}" ]]; then
+            printf '%s\n' "${repo_root}/snapshots/${snapshot}"
+            return 0
+        fi
+    fi
+
+    if compgen -G "${repo_root}/snapshots/*" > /dev/null; then
+        find "${repo_root}/snapshots" -mindepth 1 -maxdepth 1 -type d | sort | head -n 1
+        return 0
+    fi
+
+    return 1
+}
+
+link_cached_model() {
+    local repo_id="${FORGE_HF_MODEL_REPO:-}"
+    local requested_file="${FORGE_HF_MODEL_FILE:-}"
+    local snapshot_dir
+    local source
+    local filename
+
+    [[ -z "${repo_id}" ]] && return 1
+
+    snapshot_dir="$(find_cached_snapshot_dir "${repo_id}")" || {
+        echo "Cached model repo not found for ${repo_id} under ${HF_CACHE_ROOT}"
+        return 1
+    }
+
+    if [[ -n "${requested_file}" ]]; then
+        source="${snapshot_dir}/${requested_file}"
+        if [[ ! -f "${source}" ]]; then
+            echo "Cached model file not found: ${source}"
+            return 1
+        fi
+    else
+        source="$(find "${snapshot_dir}" -maxdepth 1 -type f \( -name '*.safetensors' -o -name '*.ckpt' \) | sort | head -n 1)"
+        if [[ -z "${source}" ]]; then
+            echo "No checkpoint file found in cached snapshot ${snapshot_dir}"
+            return 1
+        fi
+    fi
+
+    filename="$(basename "${source}")"
+    ln -sfn "${source}" "${MODEL_DIR}/${filename}"
+    export FORGE_MODEL_CHECKPOINT="${filename}"
+    echo "Linked cached model ${filename} from ${source}"
+    return 0
+}
 
 download_model() {
     local filename="$1"
@@ -54,8 +119,12 @@ sync_models() {
         return
     fi
 
+    if link_cached_model; then
+        return
+    fi
+
     if [[ -z "${MODEL_DOWNLOADS}" ]]; then
-        echo "Neither FORGE_MODEL_DOWNLOADS nor MODEL_URL is set; assuming models are already available."
+        echo "No cached model or download manifest configured; assuming models are already available."
         return
     fi
 
@@ -99,7 +168,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-python launch.py ${WEBUI_ARGS} --skip-prepare-environment --api-log &
+python launch.py ${WEBUI_ARGS} --skip-prepare-environment &
 FORGE_PID=$!
 echo "Forge started with PID ${FORGE_PID}"
 
